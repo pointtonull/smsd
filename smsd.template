@@ -1,0 +1,14 @@
+## Cada servidor debe correr en su propia carpeta
+[gammu]
+port = $devicepath
+connection = at
+
+[smsd]
+service = files
+logfile = smsdlog
+debuglevel = 1
+deliveryreport = report
+inboxpath = inbox/
+outboxpath = outbox/
+sentsmspath = sent/
+errorsmspath = error/

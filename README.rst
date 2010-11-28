@@ -1,5 +1,6 @@
-
 .. figure:: http://arnet.no-ip.org/blog/testing.png
+   :align: right
+
 
 Description
 ===========

@@ -1,0 +1,14 @@
+## Cada servidor debe correr en su propia carpeta
+[gammu]
+port = /dev/ttyACM1
+connection = at
+
+[smsd]
+service = files
+logfile = smsdlog
+#debuglevel = 10
+#deliveryreport = reports
+inboxpath = /home/deimos/programacion/python/smsd/inbox/
+outboxpath = /home/deimos/programacion/python/smsd/outbox/
+sentsmspath = /home/deimos/programacion/python/smsd/sent/
+errorsmspath = /home/deimos/programacion/python/smsd/error/

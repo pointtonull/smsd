@@ -1,0 +1,6 @@
+Wed 2010/10/13 06:22:00 gammu-smsd-monitor[17950]: Mapped POSIX RO shared memory at 0x7f2035e93000
+Wed 2010/10/13 06:22:03 gammu-smsd[17944]: Error at init connection: No se recibió respuesta en el tiempo especificado. Probablemente el teléfono no está conectado. (TIMEOUT[14])
+Wed 2010/10/13 06:22:09 gammu-smsd[17944]: Terminating communication...
+Wed 2010/10/13 06:22:09 gammu-smsd[17944]: Using FILES service
+Wed 2010/10/13 06:22:20 gammu-smsd-monitor[17950]: Failed to allocate shared memory segment!, Error 2: No existe el fichero o el directorio
+
