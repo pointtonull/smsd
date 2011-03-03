@@ -11,6 +11,12 @@ from decoradores import Verbose, Timeout
 
 READTIMEOUT = 60
 
+"""
+    Why use this module instead of smsd (http://wiki.gnokii.org/index.php/SMSD)?
+        - SMSD is bogus
+        - Has not multi-phone features
+"""
+
 class Gnokii(object):
     def __init__(self, config=None, phone=None):
         """
