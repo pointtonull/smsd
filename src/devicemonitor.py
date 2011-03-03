@@ -2,16 +2,24 @@
 
 from dbus.mainloop.glib import DBusGMainLoop
 from debug import debug
-import shutil
 from decoradores import Verbose
 import csv
 import dbus
 import gobject
+import logging
+import logging.handlers
 import optparse
 import os
+import shutil
 import time
 
-DEBUG = 0
+
+APP_NAME = "devicemonitor"
+CONF_FILES = [os.path.expanduser("~/.%s" % APP_NAME),
+    os.path.expanduser("~/%s.ini" % APP_NAME)]
+LOG_FILE = os.path.expanduser("~/.%s.log" % APP_NAME)
+VERBOSE = 20
+
 
 class Monitor(object):
     def __init__(self, on_added_device_device=None,
@@ -183,21 +191,26 @@ def main(options, args):
 if __name__ == "__main__":
     # == Reading the options of the execution ==
     options, args = get_options()
+    VERBOSE = (options.quiet - options.verbose) * 10 + 30
 
-    error = Verbose(options.verbose - options.quiet + 2, "E: ")
-    warning = Verbose(options.verbose - options.quiet + 1, "W: ")
-    info = Verbose(options.verbose - options.quiet + 0)
-    moreinfo = Verbose(options.verbose - options.quiet -1)
-    debug = Verbose(options.verbose - options.quiet - 2, "D: ")
+format = "%(asctime)s - %(message)s"
+logging.basicConfig(format=format, filename=LOG_FILE, level=0)
+logger = logging.getLogger()
+logger.handlers[0].setLevel(VERBOSE - 10)
 
+stderr = logging.StreamHandler()
+stderr.setLevel(VERBOSE)
+logger.addHandler(stderr)
+
+debug = ident(logger.debug)
+moreinfo = ident(logger.info)
+info = ident(logger.warning) # Default
+warning = ident(logger.error)
+error = ident(logger.critical)
+
+
+if __name__ == "__main__":
+    debug("Verbose level: %s" % VERBOSE)
     debug("""Options: '%s', args: '%s'""" % (options, args))
 
     exit(main(options, args))
-
-else:
-
-    error = Verbose(2 - DEBUG, "E: ")
-    warning = Verbose(1, "W: ")
-    info = Verbose(0)
-    moreinfo = Verbose(1)
-    debug = Verbose(2, "D: ")
