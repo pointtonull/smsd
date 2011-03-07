@@ -2,7 +2,7 @@
 
 from dbus.mainloop.glib import DBusGMainLoop
 from debug import debug
-from decoradores import Verbose
+from decoradores import Verbose, get_depth
 import csv
 import dbus
 import gobject
@@ -170,11 +170,18 @@ def make_config_file(path, model, connection="serial"):
 
 
 def remove_config_file(path):
-    moreinfo("Path:", path)
+    moreinfo("Path: %s" % path)
     try:
         os.remove(get_conf_name(path))
     except OSError:
         return
+
+
+def ident(func, identation="  "):
+    def decorated(message, *args, **kwargs):
+        newmessage = "%s%s" % (identation * (get_depth() - 1), message)
+        return func(newmessage, *args, **kwargs)
+    return decorated
 
 
 def main(options, args):

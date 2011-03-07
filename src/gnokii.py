@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 #-*- coding: UTF-8 -*-
 
+from decoradores import Verbose, Timeout, debug
 from subprocess import Popen, PIPE, STDOUT
-import fileinput
-import sys
-import os
-import time
+from tempfile import mkstemp, mktemp
 import fcntl
-from decoradores import Verbose, Timeout
+import fileinput
+import os
+import re
+import sys
+import time
 
-READTIMEOUT = 60
+READTIMEOUT = 5
+RESULT_RE = r'(?ms)^.*?$\n(.*)^gnokii>\s*'
 
 """
     Why use this module instead of smsd (http://wiki.gnokii.org/index.php/SMSD)?
@@ -17,20 +20,22 @@ READTIMEOUT = 60
         - Has not multi-phone features
 """
 
+
 class Gnokii(object):
     def __init__(self, config=None, phone=None):
         """
         Create a server interface:
 
-        config -- path to reads configuration from instead of trying default
+        :config: path to reads configuration from instead of trying default
             locations.
-        phone -- phone section name of the config file to reads parameters.
+        :phone: phone section name of the config file to reads parameters.
             phone=foo reads the [phone_foo] section.
         """
+
         self._proc = None
-        self._prompt = "gnokii> "
 
 
+    @Verbose(1, 1)
     def is_alive(self):
         """
         Return whether the server is alive.
@@ -53,11 +58,9 @@ class Gnokii(object):
             self._proc = Popen([exepath, '--shell'], stdin=PIPE,
                 stdout=PIPE, stderr=STDOUT)
 
-            for file in (self._proc.stdout,):
-                flags = fcntl.fcntl(file, fcntl.F_GETFL)
-                fcntl.fcntl(file, fcntl.F_SETFL, flags|os.O_NONBLOCK)
-
-            self.get_result()
+            file = self._proc.stdout
+            flags = fcntl.fcntl(file, fcntl.F_GETFL)
+            fcntl.fcntl(file, fcntl.F_SETFL, flags|os.O_NONBLOCK)
 
             return self.is_alive()
         else:
@@ -88,47 +91,58 @@ class Gnokii(object):
 
     def __del__(self):
         """
-        Destructor method to ensure the lock is released.
+        Destructor method, ensures the lock is released.
         """
         return self.stop()
 
 
+    @Verbose(1, 1)
     def send(self, command, *args):
         """
         Sends string to the server. This is a low level tool, try yo use the 
         specific method insteat.
         """
         if self.is_alive():
-            if args:
-                self._proc.stdin.write("%s %s\n" % (command, " ".join(args)))
-            else:
-                self._proc.stdin.write("%s\n" % (command))
+            command = " ".join([command] + list(args))
+            debug(command)
+
+            self._proc.stdin.write(command)
             return self.get_result()
+
         else:
             raise IOError("Server is not alive")
 
 
-    @Timeout(READTIMEOUT * 2)
+    @Verbose(1, 1)
     def get_result(self):
         """
         Read and parse the server output.
         """
-        result = ""
+
         lasttime = time.time()
-        while (self.is_alive() and not result.endswith(self._prompt)
-            and (time.time() - lasttime) < READTIMEOUT):
+        result = None
+        output = ""
+        while not result and self.is_alive():
+            if READTIMEOUT < (time.time() - lasttime):
+                debug("TIMEOUT")
+                break
+
             try:
-                result += self._proc.stdout.read()
+                new = self._proc.stdout.read()
+                debug("Added to output: %s" % new)
+                output += new
                 lasttime = time.time()
             except IOError, e:
+                debug("Waiting stdout")
                 if e.errno != 11:
                     raise
                 else:
                     time.sleep(.1)
 
-        result = [line for line in result.splitlines()
-            if not line.startswith(self._prompt)]
-        return "\n".join(result)
+            result = re.match(RESULT_RE, output)
+
+        output = result.group(1) if result else output
+        return output
 
 
     def help(self, section=""):
@@ -367,9 +381,9 @@ class Gnokii(object):
         return self.send("--deletesms", memory_type, start, end)
 
 
-    def sendsms(self, destination, message, smsc=None, smscno=None,
+    def sendsms(self, message, destination, smsc=None, smscno=None,
         report=False, use8bits=False, clase=None, validity=None, imelody=False,
-        animation=None, concat="this", wappush=None):
+        animation=None, concat=None, wappush=None):
         """
         Sends an SMS message to destination via smsc or SMSC number taken from
         phone memory from address smscno. If this argument is omitted SMSC 
@@ -388,32 +402,183 @@ class Gnokii(object):
         wappush - url, send wappush to the given url
         """
 
+        message = '\n%s\n\03' % message
         smsc = '--smsc "%s"' % smsc if smsc else ""
         smscno = '--smscno "%s"' % smscno if (smscno and not smsc) else ""
-        report = '--report' is report else ""
+        report = '--report' if report else ""
         use8bits = '--use8bits' if use8bits else ""
         clase = '--class "%s"' % clase if clase else ""
         validity = '--validity "%s"' % validity if validity else ""
         imelody = '--imelody' if imelody else ""
-        animation = '--animation "%s"' if animation else ""
-        concat = '--concat "%s"' % concat
+        animation = '--animatfon "%s"' if animation else ""
+        concat = '--concat "%s"' % concat if concat else ""
         wappush = '--wappush "%s"' % wappush if wappush else ""
         
         return self.send("--sendsms", destination, smsc, smscno, report, 
-            use8bits, clase, validity, imelody, animation, concat, wappush)
+            use8bits, clase, validity, imelody, animation, concat, wappush,
+            message)
 
-    def savesms(self, sender=None, smsc=None, smscno=None, folder=None,
-        location=None, sent):
+
+    def savesms(self, message, sender=None, smsc=None,
+        smscno=None, folder=None, location=None, sent=None, deliver=False):
         """
         Saves SMS messages to phone.
 
+        :sender: sender number. Only if deliver is True
+        :smsc: message center number. Only if deliver is True
+        :smscno: message center index, smsc is taken from phone memory from
+            address smscno. Only if deliver is True
+        :folder: folder id where to save the SMS to. For values see getsms.
+        :location: save the message to location number
+        :new: mark the message as no sent/no readed (depending on deliver)
+        :deliver: set the message type to SMS_Deliver
+        :datetime: YYMMDDHHMMSS, sets datetime of delivery
         """
 
+        smsc = '--smsc "%s"' % smsc if smsc else ''
+        smscno = '--smscno "%s"' % smscno if (smscno and not smsc) else ''
+        folder = '--folder "%s"' % folder if folder else ''
+        location = '--location "%s"' % location if location else ''
+        sent = '--sent' if not new else ''
+        delive = '--deliver' if deliver else ''
+        datetime = '--datetime %s' % datetime if datetime else ''
+        message = '\n%s\n\03' % message
+
+        return self.send("--savesms", sender, smsc, smscno, folder, location,
+            sent, deliver, message)
+
+
+    def getsmsc(self, start_number=None, end_number=None, raw=False):
+        """
+        Get the SMSC parameters from specified location(s) or for all locations.
+        """
+        
+        assert start_number or not end_number
+
+        start_number = start_number if start_number else ''
+        end_number = end_number if end_number else ''
+        raw = '--raw' if raw else ''
+        
+        return self.send('--getsmsc', start_number, end_number, raw)
+
+
+    def setsmsc(self, smsc):
+        """
+        Set SMSC parameters. See raw output of getsmsc for syntax.
+        """
+#        TODO: Documentar mejor
+
+        smsc = "\n%s\n\03" % smsc
+
+        return self.send('--setsmsc', smsc)
+
+
+    def createsmsfolder(self, name):
+        """
+        Create SMS folder with name name.
+        """
+
+        return self.send('--createsmsfolder', name)
+
+
+    def deletesmsfolder(self, number):
+        """
+        Delete folder # number of 'My Folders'.
+        """
+
+        return self.send('--deletesmsfolder', number)
+
+
+    def getsmsfolderstatus(self):
+        """
+        List SMS folder names with memory types and total number of
+        messages available.
+        """
+
+        return self.send('--showsmsfolderstatus')
+
+
+    def smsreader(self):
+        """
+        Keeps reading incoming SMS and saves them into the mailbox.
+        """
+
+        return self.send('--smsreader')
+
+
+    def getmms(self, memory_type, start, end='', format="human"):
+        """
+        Gets MMS messages from specified  memory  type  starting  at  entry
+        start and ending at end.
+        
+        :format: output format, could be "human" (human redeable), "pdu"
+            (binary as received by the phone or "raw" (as read from the phone).
+        """
+
+        file = mktemp(".smsd")
+
+        if format != "human":
+            assert format in ("pdu", "raw")
+            format = "--%s" % format
+
+        result = self.send('--getmms', memory_type, start, end, format, file,
+            '--overwrite')
+        debug(result)
+
+        return open(file).read()
+
+
+    @Verbose(1, 1)
+    def identify(self):
+        """
+        Get IMEI, manufacturer, model, product name and revision.
+        """
+
+        return self.send('--identify')
+
+
+    def entersecuritycode(self, type, code):
+        """
+        Sends the security code to the phone.
+
+        :type: The code type could be PIN, PIN2, PUK, PUK2 or SEC
+        """
+
+        assert type in ('PIN', 'PIN2', 'PUK', 'PUK2', 'SEC')
+
+        return send('--entersecuritycode', type, code)
+
+
+    def getsecuritycode(self):
+        """
+        Shows the currently set security code.
+        """
+
+        return self.send('--getsecuritycode')
+
+
+    def getsecuritycodestatus(self):
+        """
+        Show if a security code is needed.
+        """
+
+        return self.send('--getsecuritycodestatus')
+
+
+    def getlocksinfo(self):
+        """
+        Show information about the (sim)locks of the phone: the lock data,
+        whether a lock is open or closed, whether it is a user or factory
+        lock and the number of unlock attempts.
+        """
+
+        return self.send('--getlocksinfo')
 
 
 
 def main():
     gnokii = Gnokii()
+    gnokii.start()
     input = fileinput.input()
 
     line = True
@@ -421,7 +586,7 @@ def main():
         line = input.readline()
         if line:
             words = line.split()
-            print gnokii.command(words[0], *words[1:])
+            print(gnokii.command(words[0], *words[1:]))
 
 
 if __name__ == "__main__":
