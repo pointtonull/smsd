@@ -2,7 +2,7 @@
 #-*- coding: UTF-8 -*-
 
 from decoradores import Verbose, Timeout, debug
-from subprocess import Popen, PIPE, STDOUT
+from subprocess import Popen, PIPE
 from tempfile import mkstemp, mktemp
 import fcntl
 import fileinput
@@ -56,7 +56,7 @@ class Gnokii(object):
             exepath = "".join(Popen(['which', 'gnokii'], 
                 stdout=PIPE).stdout.readlines()).strip()
             self._proc = Popen([exepath, '--shell'], stdin=PIPE,
-                stdout=PIPE, stderr=STDOUT)
+                stdout=PIPE, stderr=PIPE)
 
             file = self._proc.stdout
             flags = fcntl.fcntl(file, fcntl.F_GETFL)
