@@ -2,7 +2,7 @@
 #-*- coding: UTF-8 -*-
 
 from decoradores import Verbose, Timeout, debug
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, STDOUT
 from tempfile import mkstemp, mktemp
 import fcntl
 import fileinput
@@ -11,8 +11,11 @@ import re
 import sys
 import time
 
-READTIMEOUT = 5
-RESULT_RE = r'(?ms)^.*?$\n(.*)^gnokii>\s*'
+READ_TIMEOUT = 5
+READ_PAUSE = .2
+RESULT_RE = r'(?ms).*?$\n(.*?)^gnokii>'
+EOL = "\n"
+EOF = "\n\03"
 
 """
     Why use this module instead of smsd (http://wiki.gnokii.org/index.php/SMSD)?
@@ -50,17 +53,17 @@ class Gnokii(object):
     
     def start(self):
         """
-        Is not alive try to run the server, returns True if successful.
+        If not alive try to run the server, returns True if successful.
         """
         if not self.is_alive():
             exepath = "".join(Popen(['which', 'gnokii'], 
                 stdout=PIPE).stdout.readlines()).strip()
             self._proc = Popen([exepath, '--shell'], stdin=PIPE,
-                stdout=PIPE, stderr=PIPE)
+                stdout=PIPE)
 
-            file = self._proc.stdout
-            flags = fcntl.fcntl(file, fcntl.F_GETFL)
-            fcntl.fcntl(file, fcntl.F_SETFL, flags|os.O_NONBLOCK)
+            for file in (self._proc.stdout, self._proc.stdout):
+                flags = fcntl.fcntl(file, fcntl.F_GETFL)
+                fcntl.fcntl(file, fcntl.F_SETFL, flags|os.O_NONBLOCK)
 
             return self.is_alive()
         else:
@@ -123,21 +126,22 @@ class Gnokii(object):
         result = None
         output = ""
         while not result and self.is_alive():
-            if READTIMEOUT < (time.time() - lasttime):
+            if READ_TIMEOUT < (time.time() - lasttime):
                 debug("TIMEOUT")
                 break
 
             try:
                 new = self._proc.stdout.read()
-                debug("Added to output: %s" % new)
-                output += new
-                lasttime = time.time()
             except IOError, e:
                 debug("Waiting stdout")
                 if e.errno != 11:
                     raise
                 else:
-                    time.sleep(.1)
+                    time.sleep(READ_PAUSE)
+            else:
+                debug("Added to output: %s" % new)
+                output += new
+                lasttime = time.time()
 
             result = re.match(RESULT_RE, output)
 
@@ -153,29 +157,33 @@ class Gnokii(object):
             todo, dial, profile, settings, wap, logo, ringtone, security, file,
             other]
         """
-        return self.send("--help", section)
+
+        return self.send("--help", section, EOL)
 
 
     def version(self):
         """
         Get version and copyright information.
         """
-        return self.send("--version")
+
+        return self.send("--version", EOL)
 
 
     def monitor(self):
         """
         Get phone status.
         """
-        #FIXME: Replace this
-        return self.send("--monitor", "once")
+
+        #FIXME: Rewrite this
+        return self.send("--monitor", "once", EOL)
 
 
     def getspeeddial(self, location):
         """
         Reads speed dial from the specified location.
         """
-        return self.send("--monitor", location)
+
+        return self.send("--monitor", location, EOL)
 
     
     def setspeeddial(self, number, memory_type, location):
@@ -183,86 +191,100 @@ class Gnokii(object):
         Specify speed dial. Location number 1 us usually reserved for voice
         mailbox number and it is unavailable.
         """
-        return self.send("--monitor", number, memory_type, location)
+
+        return self.send("--monitor", number, memory_type, location, EOL)
     
 
     def dialvoice(self, number):
         """
         Initiate voice call. Returns the callid to be used with hanhup.
         """
-        return self.send("--dialvoice", number)
+
+        return self.send("--dialvoice", number, EOL)
 
 
     def senddtmf(self, string):
         """
         Send DTMF sequence.
         """
-        return self.send("--senddtmf", string)
+
+        return self.send("--senddtmf", string, EOL)
 
 
     def answercall(self, callid):
         """
         Answer an incoming call.
         """
-        return self.send("--answercall", callid)
+
+        return self.send("--answercall", callid, EOL)
 
 
     def hangup(self, callid):
         """
         Hangup an incoming call or an already established call.
         """
-        return self.send("--hangup", callid)
+
+        return self.send("--hangup", callid, EOL)
 
 
     def divert(self, operations="all"):
         """
         Manage call diverting/forwarding.
         """
+
         raise NotImplementedError("Confusing syntax")
-        return self.send("--divert")
+
+        return self.send("--divert", EOL)
 
 
     def getdisplaystatus(self):
         """
         Show what icons are displayed.
         """
-        return self.send("--getdisplaystatus")
+
+        return self.send("--getdisplaystatus", EOL)
 
     
     def displayoutput(self):
         """
         Show texts displayed in phone's screen.
         """
-        return self.send("--displayoutput")
+
+        return self.send("--displayoutput", EOL)
 
 
     def getprofile(self, number=""):
         """
         Show settings for selected(all) profile(s).
         """
-        return self.send("--getprofile", number)
+
+        return self.send("--getprofile", number, EOL)
 
 
     def setprofile(self):
         """
         Sets settings for selected(all) profile(s).
         """
+
         raise NotImplementedError("Uh? No documented.")
-        return self.send("--setprofile")
+
+        return self.send("--setprofile", EOL)
 
 
     def getactiveprofile(self):
         """
         Reads the active profile.
         """
-        return self.send("--getactiveprofile")
+
+        return self.send("--getactiveprofile", EOL)
 
 
     def setactiveprofile(self, profile_no):
         """
         Sets the active profile to the profile number.
         """
-        return self.send("--setactiveprofile", profile_no)
+
+        return self.send("--setactiveprofile", profile_no, EOL)
 
 
     def netmonitor(self, setup=""):
@@ -275,14 +297,18 @@ class Gnokii(object):
         next - show next page
         nr - show page number nr in range 1..239
         """
-        return self.send("--netmonitor", setup)
+
+        return self.send("--netmonitor", setup, EOL)
 
 
     def reset(self, hard=False):
         """
         Resets the phone.
         """
-        return self.send("--reset", "hard" if hard else "soft")
+
+        mode = "hard" if hard else "soft"
+
+        return self.send("--reset", mode, EOL)
 
 
     def gettodo(self, start=1, end="", vcal=True):
@@ -290,7 +316,10 @@ class Gnokii(object):
         Get the notes with numbers from start to end from  ToDo  list. "end"
         is a keyword that denotes 'everything till the end
         """
-        return self.send("--gettodo", start, end, "--vCal" if vcal else "")
+
+        vcal = "--vcal" if vcal else ""
+
+        return self.send("--gettodo", start, end, vcal, EOL)
 
 
     def writetodo(self, vcalfile, start, end=""):
@@ -299,14 +328,15 @@ class Gnokii(object):
         to ToDo list. More than one note a time can be saved. "end" is a 
         keyword that denotes 'everything till the end'
         """
-        return self.send("--writetodo", vcalfile, start, end)
+        return self.send("--writetodo", vcalfile, start, end, EOL)
 
 
     def deletealltodos(self):
         """
         Delete all notes from the ToDo list.
         """
-        return self.send("--deletealltodos")
+
+        return self.send("--deletealltodos", EOL)
 
 
     def getcalendarnote(self, start, end="", vcal=True):
@@ -314,8 +344,10 @@ class Gnokii(object):
         Get the notes with numbers from start_number to end_number from 
         calendar. "end" is a keyword that denotes 'everything till the end'.
         """
-        return self.send("--getcalendarnote", start, end, "--vCal"
-            if vcal else "")
+
+        vcal = "--vcal" if vcal else ""
+
+        return self.send("--getcalendarnote", start, end, vcal)
 
 
     def writecalendarnote(self, vcalfile, start, end=""):
@@ -324,7 +356,8 @@ class Gnokii(object):
         to a phone calendar. More than one note a time can be saved. "end" is a
         keyword that denotes 'everything till the end'.
         """
-        return self.send("--writecalendarnote", vcalfile, start, end)
+
+        return self.send("--writecalendarnote", vcalfile, start, end, EOL)
 
 
     def deletecalendarnote(self, start, end=""):
@@ -332,7 +365,8 @@ class Gnokii(object):
         Delete the notes with numbers from start to end from calendar. "end" is
         a keyword that denotes 'everything till the end'.
         """
-        return self.send("--deletecalendarnote", start, end)
+
+        return self.send("--deletecalendarnote", start, end, EOL)
 
 
     def getsms(self, memory_type, start, end="", file="", append=True,
@@ -368,8 +402,10 @@ class Gnokii(object):
         else:
             mode = ""
 
+        delete = "--delete" if delete else ""
+
         return self.send("--deletecalendarnote", memory_type, start, end, mode,
-            file, "--delete" if delete else "")
+            file, EOL)
 
 
     def deletesms(self, memory_type, start, end=""):
@@ -378,7 +414,8 @@ class Gnokii(object):
         and ending at end. If end is not specified only the location start is
         deleted.
         """
-        return self.send("--deletesms", memory_type, start, end)
+
+        return self.send("--deletesms", memory_type, start, end, EOL)
 
 
     def sendsms(self, message, destination, smsc=None, smscno=None,
@@ -402,7 +439,7 @@ class Gnokii(object):
         wappush - url, send wappush to the given url
         """
 
-        message = '\n%s\n\03' % message
+        message = '%s' % message
         smsc = '--smsc "%s"' % smsc if smsc else ""
         smscno = '--smscno "%s"' % smscno if (smscno and not smsc) else ""
         report = '--report' if report else ""
@@ -415,8 +452,8 @@ class Gnokii(object):
         wappush = '--wappush "%s"' % wappush if wappush else ""
         
         return self.send("--sendsms", destination, smsc, smscno, report, 
-            use8bits, clase, validity, imelody, animation, concat, wappush,
-            message)
+            use8bits, clase, validity, imelody, animation, concat, wappush, EOL,
+            message, EOF)
 
 
     def savesms(self, message, sender=None, smsc=None,
@@ -445,7 +482,7 @@ class Gnokii(object):
         message = '\n%s\n\03' % message
 
         return self.send("--savesms", sender, smsc, smscno, folder, location,
-            sent, deliver, message)
+            sent, deliver, message, EOL)
 
 
     def getsmsc(self, start_number=None, end_number=None, raw=False):
@@ -459,18 +496,18 @@ class Gnokii(object):
         end_number = end_number if end_number else ''
         raw = '--raw' if raw else ''
         
-        return self.send('--getsmsc', start_number, end_number, raw)
+        return self.send('--getsmsc', start_number, end_number, raw, EOL)
 
 
     def setsmsc(self, smsc):
         """
         Set SMSC parameters. See raw output of getsmsc for syntax.
         """
-#        TODO: Documentar mejor
+        # TODO: Documentar mejor
 
         smsc = "\n%s\n\03" % smsc
 
-        return self.send('--setsmsc', smsc)
+        return self.send('--setsmsc', smsc, EOL)
 
 
     def createsmsfolder(self, name):
@@ -478,7 +515,7 @@ class Gnokii(object):
         Create SMS folder with name name.
         """
 
-        return self.send('--createsmsfolder', name)
+        return self.send('--createsmsfolder', name, EOL)
 
 
     def deletesmsfolder(self, number):
@@ -486,7 +523,7 @@ class Gnokii(object):
         Delete folder # number of 'My Folders'.
         """
 
-        return self.send('--deletesmsfolder', number)
+        return self.send('--deletesmsfolder', number, EOL)
 
 
     def getsmsfolderstatus(self):
@@ -495,7 +532,7 @@ class Gnokii(object):
         messages available.
         """
 
-        return self.send('--showsmsfolderstatus')
+        return self.send('--showsmsfolderstatus', EOL)
 
 
     def smsreader(self):
@@ -503,7 +540,7 @@ class Gnokii(object):
         Keeps reading incoming SMS and saves them into the mailbox.
         """
 
-        return self.send('--smsreader')
+        return self.send('--smsreader', EOL)
 
 
     def getmms(self, memory_type, start, end='', format="human"):
@@ -522,7 +559,7 @@ class Gnokii(object):
             format = "--%s" % format
 
         result = self.send('--getmms', memory_type, start, end, format, file,
-            '--overwrite')
+            '--overwrite', EOL)
         debug(result)
 
         return open(file).read()
@@ -534,7 +571,7 @@ class Gnokii(object):
         Get IMEI, manufacturer, model, product name and revision.
         """
 
-        return self.send('--identify')
+        return self.send('--identify', EOL)
 
 
     def entersecuritycode(self, type, code):
@@ -546,7 +583,7 @@ class Gnokii(object):
 
         assert type in ('PIN', 'PIN2', 'PUK', 'PUK2', 'SEC')
 
-        return send('--entersecuritycode', type, code)
+        return send('--entersecuritycode', type, code, EOL)
 
 
     def getsecuritycode(self):
@@ -554,7 +591,7 @@ class Gnokii(object):
         Shows the currently set security code.
         """
 
-        return self.send('--getsecuritycode')
+        return self.send('--getsecuritycode', EOL)
 
 
     def getsecuritycodestatus(self):
@@ -562,7 +599,7 @@ class Gnokii(object):
         Show if a security code is needed.
         """
 
-        return self.send('--getsecuritycodestatus')
+        return self.send('--getsecuritycodestatus', EOL)
 
 
     def getlocksinfo(self):
@@ -572,7 +609,7 @@ class Gnokii(object):
         lock and the number of unlock attempts.
         """
 
-        return self.send('--getlocksinfo')
+        return self.send('--getlocksinfo', EOL)
 
 
 
