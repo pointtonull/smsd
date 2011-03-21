@@ -11,11 +11,11 @@ import re
 import sys
 import time
 
-READ_TIMEOUT = 5
-READ_PAUSE = .2
-RESULT_RE = r'(?ms).*?$\n(.*?)^gnokii>'
-EOL = "\n"
 EOF = "\n\03"
+EOL = "\n"
+READ_PAUSE = .2
+READ_TIMEOUT = 5
+RESULT_RE = r'(?ms).*?$\n(.*?)^gnokii>'
 
 """
     Why use this module instead of smsd (http://wiki.gnokii.org/index.php/SMSD)?
@@ -38,11 +38,12 @@ class Gnokii(object):
         self._proc = None
 
 
-    @Verbose(1, 1)
+#    @Verbose(1, 1)
     def is_alive(self):
         """
         Return whether the server is alive.
         """
+
         if self._proc is None:
             return False
         elif self._proc.poll() is None:
@@ -55,6 +56,7 @@ class Gnokii(object):
         """
         If not alive try to run the server, returns True if successful.
         """
+
         if not self.is_alive():
             exepath = "".join(Popen(['which', 'gnokii'], 
                 stdout=PIPE).stdout.readlines()).strip()
@@ -74,6 +76,7 @@ class Gnokii(object):
         """
         Is alive try to stop the server, returns True if successful.
         """
+
         if self.is_alive():
             self._proc.stdin.close()
             self._proc.terminate()
@@ -87,6 +90,7 @@ class Gnokii(object):
         """
         Start or restart the server, returns True if successful.
         """
+
         if self.is_alive():
             self.stop()
         return self.start()
@@ -96,6 +100,7 @@ class Gnokii(object):
         """
         Destructor method, ensures the lock is released.
         """
+
         return self.stop()
 
 
@@ -105,6 +110,7 @@ class Gnokii(object):
         Sends string to the server. This is a low level tool, try yo use the 
         specific method insteat.
         """
+
         if self.is_alive():
             command = " ".join([command] + list(args))
             debug(command)
@@ -503,7 +509,7 @@ class Gnokii(object):
         """
         Set SMSC parameters. See raw output of getsmsc for syntax.
         """
-        # TODO: Documentar mejor
+        # TODO: Improve documentation
 
         smsc = "\n%s\n\03" % smsc
 
@@ -623,7 +629,7 @@ def main():
         line = input.readline()
         if line:
             words = line.split()
-            print(gnokii.command(words[0], *words[1:]))
+#            print(gnokii.command(words[0], *words[1:]))
 
 
 if __name__ == "__main__":

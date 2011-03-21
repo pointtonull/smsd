@@ -18,6 +18,7 @@ APP_NAME = "devicemonitor"
 CONF_FILES = [os.path.expanduser("~/.%s" % APP_NAME),
     os.path.expanduser("~/%s.ini" % APP_NAME)]
 LOG_FILE = os.path.expanduser("~/.%s.log" % APP_NAME)
+DEV_CONF_PATH = "../configs"
 VERBOSE = 20
 
 
@@ -45,7 +46,7 @@ class Monitor(object):
             'DeviceRemoved', 'org.freedesktop.Hal.Manager',
             'org.freedesktop.Hal', '/org/freedesktop/Hal/Manager')
 
-        reader = csv.reader(open("models.csv"))
+        reader = csv.reader(open("data/models.csv"))
         self.models = dict(reader)
 
         self.modems = {}
@@ -145,9 +146,8 @@ def get_options():
     return optparser.parse_args()
 
 def get_conf_name(path):
-    configs = "configs"
-    assert os.path.isdir(configs)
-    return "%s/gnokii%s.conf" % (configs, path.replace("/", "."))
+    assert os.path.isdir(DEV_CONF_PATH)
+    return "%s/gnokii%s.conf" % (DEV_CONF_PATH, path.replace("/", "."))
 
 def make_config_file(path, model, connection="serial"):
     moreinfo("Path: %s Model: %s Connection: %s" % (path, model, connection))
@@ -185,14 +185,13 @@ def ident(func, identation="  "):
 
 
 def main(options, args):
-    shutil.rmtree("configs")
-    os.mkdir("configs")
+    shutil.rmtree(DEV_CONF_PATH)
+    os.mkdir(DEV_CONF_PATH)
     monitor = Monitor(make_config_file, remove_config_file)
     try:
         monitor.loop.run()
     except KeyboardInterrupt:
         return 0
-    shutil.rmtree("configs")
 
 
 if __name__ == "__main__":
